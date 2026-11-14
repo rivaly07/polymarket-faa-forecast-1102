@@ -19,6 +19,7 @@ QUANTILES = [0.05, 0.25, 0.5, 0.75, 0.95]
 Z = [-1.644854, -0.674490, 0.0, 0.674490, 1.644854]
 LB = 720  # lookback in minutes (prices) for the volatility estimate
 MIN_SIGMA = 0.0006
+XCUT = 0.20  # the bound below which the downward shift is justified
 
 
 def robust_sigma(prices):
@@ -43,6 +44,13 @@ def clamp01(v):
 
 
 def forecast(market, horizon):
+    """Forecast a market's quantiles over the next `horizon` minutes.
+
+    Below XCUT the downward shift is justified: the downside of a wrong
+    downward shift is bounded by the price itself and the markets decay.
+    Above it the shift would cost more than it earns, so the median stays
+    at the last price.
+    """
     prices = market.get("prices") or []
     if prices:
         x = prices[-1]
@@ -53,7 +61,8 @@ def forecast(market, horizon):
     rows = []
     for h in range(1, horizon + 1):
         s = sigma * math.sqrt(h)
-        m = x * (1.0 - 0.5 * math.sqrt(h / 240.0))
+        d = 0.5 if x <= XCUT else 0.0
+        m = x - d * x * math.sqrt(h / 240.0)
         q05 = m - 1.644854 * s
         q25 = m - 0.674490 * s
         q50 = m
